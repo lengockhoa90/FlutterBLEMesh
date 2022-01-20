@@ -1,0 +1,33 @@
+PODS:
+  - CryptoSwift (1.4.0)
+  - Flutter (1.0.0)
+  - nrf_ble_mesh_plugin (0.0.1):
+    - Flutter
+    - nRFMeshProvision (= 3.1.5)
+  - nRFMeshProvision (3.1.5):
+    - CryptoSwift (= 1.4.0)
+
+DEPENDENCIES:
+  - Flutter (from `Flutter`)
+  - nrf_ble_mesh_plugin (from `.symlinks/plugins/nrf_ble_mesh_plugin/ios`)
+
+SPEC REPOS:
+  trunk:
+    - CryptoSwift
+    - nRFMeshProvision
+
+EXTERNAL SOURCES:
+  Flutter:
+    :path: Flutter
+  nrf_ble_mesh_plugin:
+    :path: ".symlinks/plugins/nrf_ble_mesh_plugin/ios"
+
+SPEC CHECKSUMS:
+  CryptoSwift: 7cc902df1784de3b389a387756c7d710f197730c
+  Flutter: 434fef37c0980e73bb6479ef766c45957d4b510c
+  nrf_ble_mesh_plugin: c27d524428c4d9118be5b124bce4613f4b0843a8
+  nRFMeshProvision: 8d93e5827501f166f1511c89a5540a610844ccf2
+
+PODFILE CHECKSUM: af6b891fb448119e2e3d0a226fcad7567aa13204
+
+COCOAPODS: 1.10.1
