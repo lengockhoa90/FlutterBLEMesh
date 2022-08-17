@@ -57,4 +57,7 @@ extension UInt16 {
     static let simpleOnOffModelId: UInt16 = 0x0001
     static let nordicSemiconductorCompanyId: UInt16 = 0x0059
     
+    static let vendorVconnexOnOffModelId: UInt16 = 0x10
+    static let vconnexCompanyId: UInt16 = 0x2e5
+    
 }

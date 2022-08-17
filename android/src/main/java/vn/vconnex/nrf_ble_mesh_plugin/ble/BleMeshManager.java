@@ -37,6 +37,7 @@ import javax.inject.Singleton;
 import dagger.hilt.android.qualifiers.ApplicationContext;
 import no.nordicsemi.android.ble.callback.DataReceivedCallback;
 import no.nordicsemi.android.ble.callback.DataSentCallback;
+import vn.vconnex.nrf_ble_mesh_plugin.NrfBleMeshPlugin;
 
 @Singleton
 public class BleMeshManager extends LoggableBleManager<BleMeshManagerCallbacks> {
@@ -150,6 +151,12 @@ public class BleMeshManager extends LoggableBleManager<BleMeshManagerCallbacks> 
     public BleMeshManager(@ApplicationContext final Context context) {
         super(context);
     }
+
+    @Override
+    public void setGattCallbacks(NrfBleMeshPlugin nrfBleMeshPlugin) {
+
+    }
+
 
     @NonNull
     @Override

@@ -26,6 +26,7 @@ import android.bluetooth.BluetoothDevice;
 
 import no.nordicsemi.android.ble.BleManagerCallbacks;
 
+
 public interface BleMeshManagerCallbacks extends BleManagerCallbacks {
 
     /**
