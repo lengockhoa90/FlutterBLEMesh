@@ -88,7 +88,7 @@ class _MyAppState extends State<MyApp> {
                   NrfBleMeshPlugin.instance.stopScanUnProvisionDevice();
                 }, child: Text('Stop Scan Unprovisioning Device')),
                 TextButton(onPressed: () {
-                  NrfBleMeshPlugin.instance.selectedProvisionDevice(uuid: _platformVersion, unicastAddress: int.parse('0052', radix: 16));
+                  NrfBleMeshPlugin.instance.selectedProvisionDevice(uuid: _platformVersion, unicastAddress: int.parse('0002', radix: 16));
                 }, child: Text('Selected Unprovisioning Device')),
                 TextButton(onPressed: () {
                   NrfBleMeshPlugin.instance.startProvisioning();
@@ -100,13 +100,13 @@ class _MyAppState extends State<MyApp> {
                   NrfBleMeshPlugin.instance.resetAllProcess();
                 }, child: Text('Rết All Process')),
                 TextButton(onPressed: () {
-                  NrfBleMeshPlugin.instance.sendMessageToAddress(address: 0x52, vendorModelId: 0x0211, companyId: 0x01, opCodeString: '0F', param: "030101" );
+                  NrfBleMeshPlugin.instance.sendMessageToAddress(address: 0x02, vendorModelId: 0x0211, companyId: 0x01, opCodeString: '0F', param: "030101" );
                 }, child: Text('Send Message')),
                 TextButton(onPressed: () {
-                  NrfBleMeshPlugin.instance.bindAppKeyToModel(nodeAddress: 0x52, modelId: 0x1000);
+                  NrfBleMeshPlugin.instance.bindAppKeyToModel(nodeAddress: 0x02, modelId: 0x1000);
                 }, child: Text('bind App key')),
                 TextButton(onPressed: () {
-                  NrfBleMeshPlugin.instance.setPublicationToAddress(nodeAddress: 0x52, modelId: 0x1000, publicAddress: 0xF000);
+                  NrfBleMeshPlugin.instance.setPublicationToAddress(nodeAddress: 0x02, modelId: 0x1000, publicAddress: 0xF000);
                 }, child: Text('public')),
                 TextButton(onPressed: () {
                   NrfBleMeshPlugin.instance.disConnectProvisionNode();
