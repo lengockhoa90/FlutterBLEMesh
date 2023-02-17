@@ -1,6 +1,6 @@
 name: nrf_ble_mesh_plugin
-description: A new Flutter plugin.
-version: 0.6.1
+description: Fix crash and check CB.
+version: 0.6.2
 homepage:
 
 environment:
