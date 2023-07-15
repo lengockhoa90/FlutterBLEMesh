@@ -214,7 +214,14 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
   }
 
   Boolean createOrLoadSavedMeshNetwork() {
-    mMeshManagerApi.loadMeshNetwork();
+    if (mMeshManagerApi.getMeshNetwork() != null) {
+      mMeshManagerApi.resetMeshNetwork();
+    }
+    else {
+      mMeshManagerApi.loadMeshNetwork();
+    }
+
+
     return true;
   }
 
