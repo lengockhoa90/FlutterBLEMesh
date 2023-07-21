@@ -102,6 +102,13 @@ public class SwiftNrfBleMeshPlugin: NSObject, FlutterPlugin {
             
             sendMessageToAddress(address: UInt16(address), vendorModelId: UInt16(vendorId), companyId: UInt16(companyId), opCodeString: opCodeString, params: paramString, isSegmented: args["isSegmented"] as? Int, security: args["security"] as? Int)
         }
+        else if (call.method == "sendSaveGatewayMessage") {
+            guard let args : Dictionary = call.arguments as? Dictionary<String, Any>, let address = args["address"] as? Int32, let opCodeString = args["opCodeString"] as? String, let paramString = args["params"] as? String  else {
+                return
+            }
+            
+            sendSaveGatewayMessage(address: UInt16(address), params: paramString, opCodeString: opCodeString)
+        }
         else if (call.method == "setPublicationToAddress") {
             guard let args : Dictionary = call.arguments as? Dictionary<String, Any>, let publishAddress = args["publicAddress"] as? Int32, let modelId = args["modelId"] as? Int32, let noteAddress = args["nodeAddress"] as? Int16 else {
                 return
@@ -210,6 +217,7 @@ public class SwiftNrfBleMeshPlugin: NSObject, FlutterPlugin {
             Model(sigModelId: .sceneServerModelId, delegate: sceneServer),
             Model(sigModelId: .sceneSetupServerModelId, delegate: sceneSetupServer),
             // Sensor Client model:
+            Model(sigModelId: .configurationServerModelId, delegate: SensorClientDelegate()),
             Model(sigModelId: .sensorClientModelId, delegate: SensorClientDelegate()),
             // Generic Default Transition Time Server model:
             Model(sigModelId: .genericDefaultTransitionTimeServerModelId,
@@ -346,16 +354,34 @@ public class SwiftNrfBleMeshPlugin: NSObject, FlutterPlugin {
     
     func sendMessageToAddress(address : UInt16!, vendorModelId : UInt16!, companyId : UInt16!, opCodeString : String!, params: String!, isSegmented : Int! = 0, security: Int! = 0) {
     
-        let model : Model = Model(vendorModelId: vendorModelId, companyId: companyId, delegate: SimpleOnOffClientDelegate(meshNetworkManager: meshNetworkManager))
+        let model : Model = Model(vendorModelId: 0x0001, companyId: 0x02E5, delegate: SimpleOnOffClientDelegate(meshNetworkManager: meshNetworkManager))
+        let opCode = UInt8(opCodeString, radix: 16)
+        let meshNetwork = meshNetworkManager.meshNetwork
 
-        if let opCode = UInt8(opCodeString, radix: 16), let meshNetwork = meshNetworkManager.meshNetwork, let appKey = meshNetwork.applicationKeys.first {
+        if let appKey = meshNetwork?.applicationKeys.first {
+            
             let parameters = Data(hex: params)
-            var message = RuntimeVendorMessage(opCode: opCode, for: model, parameters: parameters)
+            var message = RuntimeVendorMessage(opCode: opCode!, for: model, parameters: parameters)
             message.isSegmented = isSegmented == 1
             message.security = security == 1 ? .high : .low
             
             do {
                 try meshNetworkManager.send(message, to: MeshAddress(address), using: appKey)
+            } catch {
+            }
+        }
+    }
+    
+    func sendSaveGatewayMessage(address : UInt16!, params: String!, opCodeString : String!) {
+        
+        if let meshNetwork = meshNetworkManager.meshNetwork, let appKey = meshNetwork.applicationKeys.first {
+            
+//            let model : Model = Model(sigModelId: .configurationServerModelId , delegate: SimpleOnOffClientDelegate(meshNetworkManager: meshNetworkManager))
+            
+            let parameters = Data(hex: params)
+            let message = SaveGatewayMessage(opCode: 0xE01102,parameters: parameters);
+            do {
+                try meshNetworkManager.send(message!, to: MeshAddress(address), using: appKey)
             } catch {
             }
         }
@@ -936,8 +962,8 @@ struct RuntimeVendorMessage: VendorMessage {
     var security: MeshMessageSecurity = .low
     
     init(opCode: UInt8, for model: Model, parameters: Data?) {
-//        self.opCode = (UInt32(0xC0 | opCode) << 16) | UInt32(model.companyIdentifier!.bigEndian)
-        self.opCode = (UInt32(0xC0 | opCode) << 16) | 0x0100
+        self.opCode = (UInt32(0xC0 | opCode) << 16) | UInt32(model.companyIdentifier!.bigEndian)
+//        self.opCode = (UInt32(0xC0 | opCode) << 16) | 0x0100
         self.parameters = parameters
     }
     

@@ -100,8 +100,11 @@ class _MyAppState extends State<MyApp> {
                   NrfBleMeshPlugin.instance.resetAllProcess();
                 }, child: Text('Rết All Process')),
                 TextButton(onPressed: () {
-                  NrfBleMeshPlugin.instance.sendMessageToAddress(address: 0x02, vendorModelId: 0x0211, companyId: 0x01, opCodeString: '0F', param: "030101" );
+                  NrfBleMeshPlugin.instance.sendMessageToAddress(address: 0x02, vendorModelId: 0x0211, companyId: 0x01, opCodeString: '12', param: "0200000000000000" );
                 }, child: Text('Send Message')),
+                TextButton(onPressed: () {
+                  NrfBleMeshPlugin.instance.sendSaveGatewayMessage(address: 0x02, opCodeString: '12', param: "0200000000000000" );
+                }, child: Text('Send Save Gateway')),
                 TextButton(onPressed: () {
                   NrfBleMeshPlugin.instance.bindAppKeyToModel(nodeAddress: 0x02, modelId: 0x1000);
                 }, child: Text('bind App key')),
