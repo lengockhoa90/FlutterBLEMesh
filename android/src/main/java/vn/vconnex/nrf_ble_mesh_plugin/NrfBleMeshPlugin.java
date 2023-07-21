@@ -7,11 +7,12 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.ParcelUuid;
 import android.util.Log;
-import android.util.SparseArray;
 
 import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
 
+
+import com.google.android.material.snackbar.Snackbar;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -27,9 +28,11 @@ import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding;
 import io.flutter.plugin.common.EventChannel;
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
+import no.nordicsemi.android.ble.BleManagerCallbacks;
 import no.nordicsemi.android.log.LogSession;
 import no.nordicsemi.android.log.Logger;
 import no.nordicsemi.android.mesh.ApplicationKey;
+import no.nordicsemi.android.mesh.MeshBeacon;
 import no.nordicsemi.android.mesh.MeshManagerApi;
 import no.nordicsemi.android.mesh.MeshManagerCallbacks;
 import no.nordicsemi.android.mesh.MeshNetwork;
@@ -39,6 +42,7 @@ import no.nordicsemi.android.mesh.MeshStatusCallbacks;
 import no.nordicsemi.android.mesh.NetworkKey;
 import no.nordicsemi.android.mesh.Provisioner;
 import no.nordicsemi.android.mesh.UnprovisionedBeacon;
+import no.nordicsemi.android.mesh.models.SigModelParser;
 import no.nordicsemi.android.mesh.opcodes.ProxyConfigMessageOpCodes;
 import no.nordicsemi.android.mesh.provisionerstates.ProvisioningCapabilities;
 import no.nordicsemi.android.mesh.provisionerstates.ProvisioningState;
@@ -48,30 +52,15 @@ import no.nordicsemi.android.mesh.transport.ConfigAppKeyStatus;
 import no.nordicsemi.android.mesh.transport.ConfigCompositionDataGet;
 import no.nordicsemi.android.mesh.transport.ConfigDefaultTtlGet;
 import no.nordicsemi.android.mesh.transport.ConfigDefaultTtlStatus;
-import no.nordicsemi.android.mesh.transport.ConfigModelAppBind;
-import no.nordicsemi.android.mesh.transport.ConfigModelAppStatus;
-import no.nordicsemi.android.mesh.transport.ConfigModelPublicationSet;
-import no.nordicsemi.android.mesh.transport.ConfigModelPublicationStatus;
-import no.nordicsemi.android.mesh.transport.ConfigModelPublicationVirtualAddressSet;
-import no.nordicsemi.android.mesh.transport.ConfigModelSubscriptionAdd;
 import no.nordicsemi.android.mesh.transport.ConfigNetworkTransmitSet;
 import no.nordicsemi.android.mesh.transport.ControlMessage;
-import no.nordicsemi.android.mesh.transport.Element;
-import no.nordicsemi.android.mesh.transport.GenericOnOffStatus;
 import no.nordicsemi.android.mesh.transport.MeshMessage;
-import no.nordicsemi.android.mesh.transport.MeshModel;
 import no.nordicsemi.android.mesh.transport.ProvisionedMeshNode;
-import no.nordicsemi.android.mesh.transport.ProxyConfigAddAddressToFilter;
 import no.nordicsemi.android.mesh.transport.ProxyConfigFilterStatus;
-import no.nordicsemi.android.mesh.transport.ProxyConfigSetFilterType;
-import no.nordicsemi.android.mesh.transport.VendorModelMessageAcked;
 import no.nordicsemi.android.mesh.transport.VendorModelMessageStatus;
-import no.nordicsemi.android.mesh.utils.AddressArray;
-import no.nordicsemi.android.mesh.utils.AddressType;
 import no.nordicsemi.android.mesh.utils.AuthenticationOOBMethods;
 import no.nordicsemi.android.mesh.utils.MeshAddress;
 import no.nordicsemi.android.mesh.utils.MeshParserUtils;
-import no.nordicsemi.android.mesh.utils.ProxyFilterType;
 import no.nordicsemi.android.support.v18.scanner.BluetoothLeScannerCompat;
 import no.nordicsemi.android.support.v18.scanner.ScanCallback;
 import no.nordicsemi.android.support.v18.scanner.ScanFilter;
@@ -140,9 +129,6 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
   private  boolean mIsScanning = false;
 
   private Integer customUnicastAddress;
-  private boolean mConnectToProxyNode = false;
-
-  private UUID mFilterUuid;
 
   @Override
   public void onAttachedToEngine(@NonNull FlutterPluginBinding flutterPluginBinding) {
@@ -208,21 +194,6 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
     else if (call.method.equals("checkHasMeshNetwork")) {
       result.success(checkHasMeshNetwork());
     }
-    else if (call.method.equals("sendMessageToAddress")) {
-      Map<String, Object> args = (Map<String, Object>) call.arguments;
-      sendMessageToAddress((Integer) args.get("address"),(Integer) args.get("vendorModelId"),(Integer) args.get("companyId"),(String) args.get("opCodeString"), (String) args.get("params"));
-    }
-    else if (call.method.equals("bindAppKeyToModel")) {
-      Map<String, Object> args = (Map<String, Object>) call.arguments;
-      result.success(bindAppKeyToModel((Integer) args.get("modelId"), (Integer) args.get("nodeAddress")));
-    }
-    else if (call.method.equals("setPublicationToAddress")) {
-      Map<String, Object> args = (Map<String, Object>) call.arguments;
-      result.success(setPublicationToAddress((Integer) args.get("publicAddress"),(Integer) args.get("modelId"), (Integer) args.get("nodeAddress")));
-    }
-    else if (call.method.equals("disConnectProvisionNode")) {
-      disConnectProvisionNode();
-    }
     else {
       result.notImplemented();
     }
@@ -235,10 +206,6 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
 
   public void initMeshNetworkManager() {
     mMeshManagerApi = new MeshManagerApi(mContext);
-    initOrUpdateBleMeshManager();
-    if (mHandler == null) {
-      mHandler = new Handler(Looper.getMainLooper());
-    }
     handleCallBack();
   }
 
@@ -247,7 +214,14 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
   }
 
   Boolean createOrLoadSavedMeshNetwork() {
-    mMeshManagerApi.loadMeshNetwork();
+    if (mMeshManagerApi.getMeshNetwork() != null) {
+      mMeshManagerApi.resetMeshNetwork();
+    }
+    else {
+      mMeshManagerApi.loadMeshNetwork();
+    }
+
+
     return true;
   }
 
@@ -260,7 +234,8 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
     return mMeshManagerApi.exportMeshNetwork();
   }
 
-  void initOrUpdateBleMeshManager() {
+  Boolean scanUnProvisionDevice() {
+
     if (mBleMeshManager == null) {
       //Initialize the ble manager
       mBleMeshManager = new BleMeshManager(mContext);
@@ -283,8 +258,6 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
 
         @Override
         public void onDeviceConnected(@NonNull BluetoothDevice device) {
-
-//          addGroupAddress();
           HashMap<String, HashMap> hashMap =new HashMap<String, HashMap>();
 
           HashMap<String, Object> contentMap =new HashMap<>();
@@ -331,9 +304,6 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
           if (mSetupProvisionedNode) {
             sendConpositionData();
           }
-          else if (mConnectToProxyNode) {
-            addGroupAddress();
-          }
           else {
             identifyNode();
             HashMap<String, HashMap> hashMap =new HashMap<String, HashMap>();
@@ -371,11 +341,6 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
         }
       });
     }
-  }
-
-  Boolean scanUnProvisionDevice() {
-
-    initOrUpdateBleMeshManager();
 
     if (mHandler == null) {
       mHandler = new Handler(Looper.getMainLooper());
@@ -385,9 +350,9 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
     if (Utils.isLocationPermissionsGranted(mContext)) {
           // We are now OK to start scanning
         mDevices.clear();
-        mConnectToProxyNode = false;
         startScan(BleMeshManager.MESH_PROVISIONING_UUID);
         return true;
+
     }
     else {
       ActivityCompat.requestPermissions(
@@ -406,9 +371,9 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
    * @param filterUuid UUID to filter scan results with
    */
   public void startScan(final UUID filterUuid) {
-       mFilterUuid = filterUuid;
 
     if (mIsScanning == true) return;
+
 
     //Scanning settings
     final no.nordicsemi.android.support.v18.scanner.ScanSettings settings = new no.nordicsemi.android.support.v18.scanner.ScanSettings.Builder()
@@ -437,11 +402,14 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
   public void stopScan() {
     final BluetoothLeScannerCompat scanner = BluetoothLeScannerCompat.getScanner();
     scanner.stopScan(mScanCallbacks);
+
     mIsScanning = false;
   }
 
   public Boolean selectedProvisionDevice(String uuidStr, Integer unicashAddress) {
       stopScan();
+
+
       if (unicashAddress != null) {
         customUnicastAddress = unicashAddress;
         final MeshNetwork network = mMeshManagerApi.getMeshNetwork();
@@ -456,8 +424,10 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
         return true;
       }
     }
+
       return  false;
   }
+
 
   void identifyNode() {
       if (mSelectedDevice != null) {
@@ -521,27 +491,11 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
     public void onScanResult(final int callbackType, @NonNull final ScanResult result) {
       try {
 
-        if (mFilterUuid.equals(BleMeshManager.MESH_PROVISIONING_UUID)) {
-          // If the packet has been obtained while Location was disabled, mark Location as not required
           if (Utils.isLocationRequired(mContext) && !Utils.isLocationEnabled(mContext))
             Utils.markLocationNotRequired(mContext);
 
-          updateScannerLiveData(result);
-        }
-        else if (mFilterUuid.equals(BleMeshManager.MESH_PROXY_UUID)) {
-          final byte[] serviceData = Utils.getServiceData(result, BleMeshManager.MESH_PROXY_UUID);
-          if (mMeshManagerApi != null) {
-            if (mMeshManagerApi.isAdvertisingWithNetworkIdentity(serviceData)) {
-              if (mMeshManagerApi.networkIdMatches(serviceData)) {
-                updateScannerLiveData(result);
-              }
-            } else if (mMeshManagerApi.isAdvertisedWithNodeIdentity(serviceData)) {
-              if (checkIfNodeIdentityMatches(serviceData)) {
-                updateScannerLiveData(result);
-              }
-            }
-          }
-        }
+             updateScannerLiveData(result);
+
       } catch (Exception ex) {
         Log.e(TAG, "Error: " + ex.getMessage());
       }
@@ -562,81 +516,50 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
   private void updateScannerLiveData(final ScanResult result) {
 
     if (mSetupProvisionedNode) {
+
       if (result.getDevice().getAddress().equals(mSelectedDevice.getAddress())) {
         stopScan();
         mBleMeshManager.connect(result.getDevice()).retry(20, 3000).enqueue();
       }
     }
-    else if (mConnectToProxyNode) {
-      stopScan();
-      mBleMeshManager.connect(result.getDevice()).retry(5, 1000).enqueue();
-    }
     else {
       final ScanRecord scanRecord = result.getScanRecord();
+
       if (scanRecord != null) {
         if (scanRecord.getBytes() != null) {
+
           final byte[] beaconData = getMeshBeaconData(scanRecord.getBytes());
+
           if (beaconData != null) {
-
-            SparseArray<byte[]> _manufacturerSpecificData = scanRecord.getManufacturerSpecificData();
-
-            String manuFacturalData = null;
-            Integer vendorId = null;
-            if (_manufacturerSpecificData != null && _manufacturerSpecificData.size() > 0) {
-              manuFacturalData = byteArrayToHex(_manufacturerSpecificData.valueAt(0));
-              vendorId = _manufacturerSpecificData.keyAt(0);
-              Log.v(TAG,  "onNetworkLoaded" + manuFacturalData);
-            }
-
-
             final int index = indexOf(result);
             if (index == -1) {
-              HashMap<String, HashMap> hashMap =new HashMap<String, HashMap>();
-              HashMap<String, Object> contentMap =new HashMap<>();
 
               String beaconDataHex = byteArrayToHex(beaconData);
               int startIndex = beaconDataHex.indexOf("dddd");
 
-              contentMap.put("uuid", result.getDevice().getAddress());
-              contentMap.put("rssi", result.getRssi());
-              contentMap.put("name", scanRecord.getDeviceName());
-
               if (beaconDataHex.length() > 20 && startIndex != -1) {
+                ExtendedBluetoothDevice device = new ExtendedBluetoothDevice(result, mMeshManagerApi.getMeshBeacon(beaconData));
+                mDevices.add(device);
+
+                HashMap<String, HashMap> hashMap =new HashMap<String, HashMap>();
+
+                HashMap<String, Object> contentMap =new HashMap<>();
+                contentMap.put("uuid", device.getAddress());
+                contentMap.put("rssi", device.getRssi());
+                contentMap.put("name", device.getName());
                 contentMap.put("macAddress", (beaconDataHex.substring(startIndex + 4, startIndex + 16)).toUpperCase());
                 contentMap.put("deviceType", Integer.parseInt(beaconDataHex.substring(startIndex + 16, startIndex + 20), 16));
                 contentMap.put("firmwareVersion", getVersionFirmware(beaconDataHex, startIndex));
+                hashMap.put("detectUnprovisionDevice" , contentMap);
+                sendEvent(hashMap);
               }
-
-              if (manuFacturalData != null && manuFacturalData.length() > 42 && vendorId != null) {
-                contentMap.put("macAddressMnf", (manuFacturalData.substring(0, 12)).toUpperCase());
-                contentMap.put("vendorId", vendorId);
-                contentMap.put("deviceTypeMnf", Integer.parseInt(manuFacturalData.substring(34, 38), 16));
-                contentMap.put("userData", intergerToHex(vendorId) + manuFacturalData);
-              }
-
-              ExtendedBluetoothDevice device = new ExtendedBluetoothDevice(result, mMeshManagerApi.getMeshBeacon(beaconData));
-              mDevices.add(device);
-              hashMap.put("detectUnprovisionDevice" , contentMap);
-
-              sendEvent(hashMap);
             }
           }
         }
       }
     }
-  }
 
 
-  private boolean checkIfNodeIdentityMatches(final byte[] serviceData) {
-    final MeshNetwork network = mMeshManagerApi.getMeshNetwork();
-    if (network != null) {
-      for (ProvisionedMeshNode node : network.getNodes()) {
-        if (mMeshManagerApi.nodeIdentityMatches(node, serviceData)) {
-          return true;
-        }
-      }
-    }
-    return false;
   }
 
   private String getVersionFirmware(final String beaconDataHex, int startIndex) {
@@ -648,8 +571,11 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
 
       return firstVersionNumber + "." + secondVersionNumber + "." + secondVersionNumber;
     }
+
     return "";
   }
+
+
 
   void  handleCallBack() {
 
@@ -657,7 +583,6 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
       @Override
       public void onNetworkLoaded(MeshNetwork meshNetwork) {
         Log.v(TAG, meshNetwork.getMeshName() + "onNetworkLoaded");
-//        addGroupAddress();
       }
 
       @Override
@@ -674,11 +599,13 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
 
       @Override
       public void onNetworkImported(MeshNetwork meshNetwork) {
+
         loadNetwork(meshNetwork);
       }
 
       @Override
       public void onNetworkImportFailed(String error) {
+
       }
 
       @Override
@@ -718,6 +645,7 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
         final ProvisionedMeshNode node = mMeshNetwork.getNode(dst);
         if (node != null) {
           mProvisionedMeshNode = node;
+
         }
       }
 
@@ -726,6 +654,7 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
         final ProvisionedMeshNode node = mMeshNetwork.getNode(src);
         if (node != null) {
           mProvisionedMeshNode = node;
+
         }
       }
 
@@ -744,29 +673,23 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
           } else if (meshMessage instanceof ConfigNetworkTransmitSet) {
 
           }
-          else if (meshMessage instanceof ConfigModelAppBind) {
-
-          }
-
-          else if (meshMessage instanceof ProxyConfigSetFilterType) {
-//            final ProxyConfigFilterStatus status = (ProxyConfigFilterStatus) meshMessage;
-//            final int unicastAddress = status.getSrc();
-//            Log.v(TAG, "Proxy configuration source: " + MeshAddress.formatAddress(status.getSrc(), false));
-
-
-          }
         }
       }
 
       @Override
       public void onMeshMessageReceived(int src, @NonNull MeshMessage meshMessage) {
 
-        Log.v(TAG,   "onMeshMessageReceived ----" + meshMessage.toString());
+        Log.v(TAG,   "onMeshMessageReceived ----" + meshMessage.getOpCode());
         final ProvisionedMeshNode node = mMeshNetwork.getNode(src);
         if (node != null)
-          mProvisionedMeshNode = node;
 
-        if (meshMessage.getOpCode() == CONFIG_COMPOSITION_DATA_STATUS) {
+          if (meshMessage.getOpCode() == ProxyConfigMessageOpCodes.FILTER_STATUS) {
+            mProvisionedMeshNode = node;
+            final ProxyConfigFilterStatus status = (ProxyConfigFilterStatus) meshMessage;
+            final int unicastAddress = status.getSrc();
+            Log.v(TAG, "Proxy configuration source: " + MeshAddress.formatAddress(status.getSrc(), false));
+
+          } else if (meshMessage.getOpCode() == CONFIG_COMPOSITION_DATA_STATUS) {
             if (mSetupProvisionedNode) {
 
               mHandler.postDelayed(() -> {
@@ -791,6 +714,7 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
             if (mSetupProvisionedNode) {
 
               List<ApplicationKey> appKeys = mMeshNetwork.getAppKeys();
+
               if (appKeys != null && appKeys.size() > 0) {
                 final ApplicationKey appKey = appKeys.get(0);
                 if (appKey != null) {
@@ -800,8 +724,6 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
                     final ConfigAppKeyAdd configAppKeyAdd = new ConfigAppKeyAdd(networkKey, appKey);
                     mMeshManagerApi.createMeshPdu(node.getUnicastAddress(), configAppKeyAdd);
                   }, 1500);
-
-
                 } else {
                   mSetupProvisionedNode = false;
                 }
@@ -817,48 +739,42 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
             final ConfigAppKeyStatus status = (ConfigAppKeyStatus) meshMessage;
             if (mSetupProvisionedNode) {
               mSetupProvisionedNode = false;
-              addGroupAddress();
-//              mBleMeshManager.disconnect().enqueue();
+              mBleMeshManager.disconnect().enqueue();
               if (status.isSuccessful()) {
                 HashMap<String, HashMap> hashMap =new HashMap<String, HashMap>();
 
                 HashMap<String, Object> contentMap =new HashMap<>();
                 contentMap.put("uuid", mSelectedDevice.getAddress());
+
                 contentMap.put("state", "addAppKeySuccessful");
                 contentMap.put("unicashAddress", String.valueOf(mProvisionedMeshNode.getUnicastAddress()));
                 hashMap.put("meshNetworkDelegate" , contentMap);
                 sendEvent(hashMap);
               }
+
             } else {
               updateNode(node);
 //              mMeshMessageLiveData.postValue(status);
             }
           } else if (meshMessage.getOpCode() == CONFIG_MODEL_APP_STATUS) {
             if (updateNode(node)) {
-              final ConfigModelAppStatus status = (ConfigModelAppStatus) meshMessage;
-
-              HashMap<String, HashMap> hashMap =new HashMap<String, HashMap>();
-
-              HashMap<String, Object> contentMap =new HashMap<>();
-              contentMap.put("nodeAddress", src);
-              contentMap.put("modelId", status.getModelIdentifier());
-              contentMap.put("elementAddress", status.getElementAddress());
-              hashMap.put("bindAppKeyToModel" , contentMap);
-              sendEvent(hashMap);
-
+//              final ConfigModelAppStatus status = (ConfigModelAppStatus) meshMessage;
+//              final Element element = node.getElements().get(status.getElementAddress());
+//              if (node.getElements().containsKey(status.getElementAddress())) {
+//                mSelectedElement.postValue(element);
+//                final MeshModel model = element.getMeshModels().get(status.getModelIdentifier());
+//                mSelectedModel.postValue(model);
+//              }
             }
           } else if (meshMessage.getOpCode() == CONFIG_MODEL_PUBLICATION_STATUS) {
             if (updateNode(node)) {
-              final ConfigModelPublicationStatus status = (ConfigModelPublicationStatus) meshMessage;
-
-              HashMap<String, HashMap> hashMap =new HashMap<String, HashMap>();
-
-              HashMap<String, Object> contentMap =new HashMap<>();
-              contentMap.put("nodeAddress", src);
-              contentMap.put("modelId", status.getModelIdentifier());
-              contentMap.put("elementAddress", status.getElementAddress());
-              hashMap.put("publicationToAddress" , contentMap);
-              sendEvent(hashMap);
+//              final ConfigModelPublicationStatus status = (ConfigModelPublicationStatus) meshMessage;
+//              if (node.getElements().containsKey(status.getElementAddress())) {
+//                final Element element = node.getElements().get(status.getElementAddress());
+//                mSelectedElement.postValue(element);
+//                final MeshModel model = element.getMeshModels().get(status.getModelIdentifier());
+//                mSelectedModel.postValue(model);
+//              }
             }
 
           } else if (meshMessage.getOpCode() == CONFIG_MODEL_SUBSCRIPTION_STATUS) {
@@ -905,17 +821,7 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
             }
           } else if (meshMessage.getOpCode() == GENERIC_ON_OFF_STATUS) {
             if (updateNode(node)) {
-              final GenericOnOffStatus status = (GenericOnOffStatus) meshMessage;
-
-              HashMap<String, HashMap> hashMap =new HashMap<String, HashMap>();
-              HashMap<String, Object> contentMap =new HashMap<>();
-              contentMap.put("address", intergerToHex(src));
-              contentMap.put("opcode", intergerToHex(status.getOpCode()));
-              contentMap.put("param", byteArrayToHex(status.getParameters()));
-              hashMap.put("receivedMessage" , contentMap);
-              sendEvent(hashMap);
-
-
+//              final GenericOnOffStatus status = (GenericOnOffStatus) meshMessage;
 //              if (node.getElements().containsKey(status.getSrcAddress())) {
 //                final Element element = node.getElements().get(status.getSrcAddress());
 //                mSelectedElement.postValue(element);
@@ -952,18 +858,16 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
           } else if (meshMessage instanceof VendorModelMessageStatus) {
 
             if (updateNode(node)) {
-              final VendorModelMessageStatus status = (VendorModelMessageStatus) meshMessage;
-
-              HashMap<String, HashMap> hashMap =new HashMap<String, HashMap>();
-              HashMap<String, Object> contentMap =new HashMap<>();
-              contentMap.put("address", src);
-              contentMap.put("opcode", intergerToHex(status.getOpCode()));
-              contentMap.put("param", byteArrayToHex(status.getParameters()));
-              hashMap.put("receivedMessage" , contentMap);
-              sendEvent(hashMap);
-
+//              final VendorModelMessageStatus status = (VendorModelMessageStatus) meshMessage;
+//              if (node.getElements().containsKey(status.getSrcAddress())) {
+//                final Element element = node.getElements().get(status.getSrcAddress());
+//                mSelectedElement.postValue(element);
+//                final MeshModel model = element.getMeshModels().get(status.getModelIdentifier());
+//                mSelectedModel.postValue(model);
+//              }
             }
           }
+
       }
 
       @Override
@@ -1080,6 +984,7 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
             Log.v(TAG, "onProvisioningStateChanged------ BLOCK_ACKNOWLEDGEMENT_RECEIVED");
             break;
         }
+
       }
 
       @Override
@@ -1094,11 +999,17 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
         mSetupProvisionedNode = true;
 
         mBleMeshManager.disconnect().enqueue();
+
+
+
+
+
 //        connectToProxy(mSelectedDevice);
 
+
         if (state == ProvisioningState.States.PROVISIONING_COMPLETE) {
-          HashMap<String, HashMap> hashMap = new HashMap<String, HashMap>();
-          HashMap<String, Object> contentMap = new HashMap<>();
+          HashMap<String, HashMap> hashMap =new HashMap<String, HashMap>();
+          HashMap<String, Object> contentMap =new HashMap<>();
           contentMap.put("state", "provisionSuccessful");
           contentMap.put("uuid", mSelectedDevice.getAddress());
           hashMap.put("provisioningDelegate" , contentMap);
@@ -1167,18 +1078,6 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
     return sb.toString();
   }
 
-  public  String intergerToHex(Integer value) {
-
-    String strValue = Integer.toHexString(value);
-
-    if (strValue.length() < 4) {
-      return String.format("%" + (4 - strValue.length()) + "c", '0') + Integer.toHexString(value);
-    }
-    else {
-      return Integer.toHexString(value);
-    }
-  }
-
   private void loadNetwork(final MeshNetwork meshNetwork) {
     mMeshNetwork = meshNetwork;
     if (mMeshNetwork != null) {
@@ -1238,107 +1137,6 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
     return false;
   }
 
-   void sendMessageToAddress(int address, int modelId, int companyIdentifier, String opcode, String parameters) {
-
-    final ApplicationKey appKey = mMeshManagerApi.getMeshNetwork().getAppKey(0);
-    if (appKey != null) {
-
-      connectToProxyNode();
-
-      if (mBleMeshManager.isConnected()) {
-        VendorModelMessageAcked meshMessage = new VendorModelMessageAcked(appKey, modelId, companyIdentifier, Integer.parseInt(opcode, 16), MeshParserUtils.toByteArray(parameters));
-        mMeshManagerApi.createMeshPdu(address,meshMessage);
-
-      }
-      else {
-        mHandler.postDelayed(() -> {
-          //Adding a slight delay here so we don't send anything before we receive the mesh beacon message
-
-            stopScan();
-          if (mBleMeshManager.isConnected()) {
-            VendorModelMessageAcked meshMessage = new VendorModelMessageAcked(appKey, modelId, companyIdentifier, Integer.parseInt(opcode, 16), MeshParserUtils.toByteArray(parameters));
-            mMeshManagerApi.createMeshPdu(address,meshMessage);
-
-          }
-          else {
-
-          }
-
-        }, 5000);
-      }
-    }
-
-  }
-
-  private boolean bindAppKeyToModel(int modelId,int  nodeAddress) {
-    final ApplicationKey appKey = mMeshManagerApi.getMeshNetwork().getAppKey(0);
-
-    ProvisionedMeshNode node = mMeshManagerApi.getMeshNetwork().getNode(nodeAddress);
-
-    if (node != null && appKey != null) {
-      for (Element element : node.getElements().values()) {
-        if (element.getMeshModels().containsKey(modelId)) {
-//          MeshModel model = element.getMeshModels().get(modelId);
-          final ConfigModelAppBind configModelAppBind = new ConfigModelAppBind(element.getElementAddress(), modelId, 0);
-          mMeshManagerApi.createMeshPdu(node.getUnicastAddress(), configModelAppBind);
-          return true;
-        }
-
-      }
-    }
-
-    return false;
-  }
-
-  private boolean setPublicationToAddress(int publicAddress, int modelId, int nodeAddress) {
-
-
-    ProvisionedMeshNode node = mMeshManagerApi.getMeshNetwork().getNode(nodeAddress);
-
-    if (node != null) {
-      for (Element element : node.getElements().values()) {
-        if (element.getMeshModels().containsKey(modelId)) {
-          MeshModel model = element.getMeshModels().get(modelId);
-          final MeshMessage configModelPublicationSet = createMessage(element, model, publicAddress);
-          mMeshManagerApi.createMeshPdu(node.getUnicastAddress(), configModelPublicationSet);
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  public MeshMessage createMessage(Element element, MeshModel model, int publishAddress) {
-    if (element != null && model != null) {
-      final AddressType type = MeshAddress.getAddressType(publishAddress);
-      if (type != null && type != AddressType.VIRTUAL_ADDRESS) {
-        return new ConfigModelPublicationSet(element.getElementAddress(),
-                publishAddress,
-                0,
-                false,
-                0xFF,
-                0,
-                0b00,
-                1,
-                1,
-                model.getModelId());
-      } else {
-        return new ConfigModelPublicationVirtualAddressSet(element.getElementAddress(),
-                UUID.randomUUID(),
-                0,
-                false,
-                0xFF,
-                0,
-                0b00,
-                1,
-                1,
-                model.getModelId());
-      }
-    }
-    return null;
-  }
-
-
   private void resetAllProcess() {
     if (mIsScanning) {
       stopScan();
@@ -1346,43 +1144,15 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
     }
 
     if (mSelectedDevice != null) {
-      mBleMeshManager.disconnect().enqueue();
+      mBleMeshManager.disconnect();
     }
 
     mDevices.clear();
     mSetupProvisionedNode = false;
+
     mUnprovisionedMeshNode = null;
     mProvisionedMeshNode = null;
-    mConnectToProxyNode = false;
-
   }
-
-  private void connectToProxyNode() {
-
-    if (!mBleMeshManager.isConnected()) {
-      mConnectToProxyNode = true;
-      stopScan();
-      startScan(BleMeshManager.MESH_PROXY_UUID);
-    }
-  }
-
-  private void addGroupAddress() {
-    final ProxyConfigSetFilterType setFilterType = new ProxyConfigSetFilterType(new ProxyFilterType(ProxyFilterType.INCLUSION_LIST_FILTER));
-
-    try {
-      mMeshManagerApi.createMeshPdu(MeshAddress.UNASSIGNED_ADDRESS, setFilterType);
-      mHandler.postDelayed(() -> {
-        final byte[] address = MeshParserUtils.toByteArray("F000");
-        List<AddressArray> addresses = new ArrayList<>();
-        addresses.add(new AddressArray(address[0], address[1]));
-        final ProxyConfigAddAddressToFilter addAddressToFilter = new ProxyConfigAddAddressToFilter(addresses);
-        mMeshManagerApi.createMeshPdu(MeshAddress.UNASSIGNED_ADDRESS, addAddressToFilter);
-      }, 3000);
-    } catch (IllegalArgumentException ex) {
-
-    }
-  }
-
 
   private boolean removeNodeInMesh(Integer address) {
 
@@ -1393,17 +1163,9 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
     return false;
   }
 
-  private void disConnectProvisionNode() {
-    if (mSelectedDevice != null) {
-      mBleMeshManager.disconnect().enqueue();
-    }
-  }
-
   private  boolean checkHasMeshNetwork() {
     return mMeshNetwork != null;
   }
-
-
 
 
   private byte[] getMeshBeaconData(@NonNull final byte[] advertisementData) {
