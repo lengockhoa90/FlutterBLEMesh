@@ -1,4 +1,5 @@
 name: nrf_ble_mesh_plugin
+
 description: Upgrade ble mesh nordic version
 version: 0.6.5
 homepage:
