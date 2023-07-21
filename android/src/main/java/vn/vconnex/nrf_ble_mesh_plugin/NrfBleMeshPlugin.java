@@ -205,10 +205,6 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
       Map<String, Object> args = (Map<String, Object>) call.arguments;
       sendMessageToAddress((Integer) args.get("address"),(Integer) args.get("vendorModelId"),(Integer) args.get("companyId"),(String) args.get("opCodeString"), (String) args.get("params"));
     }
-    else if (call.method.equals("sendSaveGatewayMessage")) {
-      Map<String, Object> args = (Map<String, Object>) call.arguments;
-      sendSaveGatewayMessage((Integer) args.get("address"),(Integer) args.get("vendorModelId"),(Integer) args.get("companyId"),(String) args.get("opCodeString"), (String) args.get("params"));
-    }
     else if (call.method.equals("bindAppKeyToModel")) {
       Map<String, Object> args = (Map<String, Object>) call.arguments;
       result.success(bindAppKeyToModel((Integer) args.get("modelId"), (Integer) args.get("nodeAddress")));
@@ -1182,38 +1178,6 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
           //Adding a slight delay here so we don't send anything before we receive the mesh beacon message
 
             stopScan();
-          if (mBleMeshManager.isConnected()) {
-            VendorModelMessageAcked meshMessage = new VendorModelMessageAcked(appKey, modelId, companyIdentifier, Integer.parseInt(opcode, 16), MeshParserUtils.toByteArray(parameters));
-            mMeshManagerApi.createMeshPdu(address,meshMessage);
-
-          }
-          else {
-
-          }
-
-        }, 5000);
-      }
-    }
-
-  }
-
-  void sendSaveGatewayMessage(int address, int modelId, int companyIdentifier, String opcode, String parameters) {
-
-    final ApplicationKey appKey = mMeshManagerApi.getMeshNetwork().getAppKey(0);
-    if (appKey != null) {
-
-      connectToProxyNode();
-
-      if (mBleMeshManager.isConnected()) {
-        VendorModelMessageAcked meshMessage = new VendorModelMessageAcked(appKey, modelId, companyIdentifier, Integer.parseInt(opcode, 16), MeshParserUtils.toByteArray(parameters));
-        mMeshManagerApi.createMeshPdu(address,meshMessage);
-
-      }
-      else {
-        mHandler.postDelayed(() -> {
-          //Adding a slight delay here so we don't send anything before we receive the mesh beacon message
-
-          stopScan();
           if (mBleMeshManager.isConnected()) {
             VendorModelMessageAcked meshMessage = new VendorModelMessageAcked(appKey, modelId, companyIdentifier, Integer.parseInt(opcode, 16), MeshParserUtils.toByteArray(parameters));
             mMeshManagerApi.createMeshPdu(address,meshMessage);
