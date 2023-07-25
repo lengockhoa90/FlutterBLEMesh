@@ -343,6 +343,23 @@ public class SwiftNrfBleMeshPlugin: NSObject, FlutterPlugin {
     func checkHasMeshNetwork() -> Bool {
         return meshNetworkManager.meshNetwork != nil
     }
+    
+    func bindAppKeyToModel(_ modelId : UInt32?, noteAddress : UInt16?) -> Bool {
+        if let address = noteAddress, let appKey = meshNetworkManager.meshNetwork?.applicationKeys.first, let node = meshNetworkManager.meshNetwork?.node(withAddress: address), let modelId = modelId {
+
+                for element in node.elements {
+                    if let model = element.model(withModelId: UInt32(modelId)) {
+                        if let message = ConfigModelAppBind(applicationKey: appKey, to: model) {
+                            _ = try? self.meshNetworkManager.send(message, to: node)
+                            
+                            return true
+                        }
+                    }
+                }
+        }
+        
+        return false
+    }
 }
 
 // MARK: - Logger
@@ -409,7 +426,14 @@ extension SwiftNrfBleMeshPlugin: CBCentralManagerDelegate {
                 let uuidString = unprovisionedDevice.uuid.uuidString.replacingOccurrences(of: "-", with: "")
                 
                
-                sendEvent(["detectUnprovisionDevice": ["uuid": unprovisionedDevice.uuid.uuidString, "rssi" : RSSI.intValue, "name" : advertisementData["kCBAdvDataLocalName"] ?? peripheral.name ?? "__", "macAddress" : getMacFromUUID(uuidString), "deviceType" : getDeviceTypeUUID(uuidString), "firmwareVersion" : getVersionFirmware(uuidString)]])
+                if let manufactory = advertisementData[CBAdvertisementDataManufacturerDataKey], let data = manufactory as? Data {
+                    let dataString = data.toHexString()
+                    
+                    sendEvent(["detectUnprovisionDevice": ["uuid": unprovisionedDevice.uuid.uuidString, "rssi" : RSSI.intValue, "name" : peripheral.name ?? advertisementData["kCBAdvDataLocalName"] ?? "__", "macAddressMnf" : getMacFromDataManufacturer(dataString), "deviceTypeMnf" : getDeviceTypeFromManufacturer(dataString), "vendorId" : getVendorIdFromManufacturer(dataString), "userData" : dataString , "macAddress" : getMacFromUUID(uuidString), "deviceType" : getDeviceTypeUUID(uuidString), "firmwareVersion" : getVersionFirmware(uuidString)]])
+                }
+                else {
+                    sendEvent(["detectUnprovisionDevice": ["uuid": unprovisionedDevice.uuid.uuidString, "rssi" : RSSI.intValue, "name" : peripheral.name ?? advertisementData["kCBAdvDataLocalName"] ??  "__", "macAddress" : getMacFromUUID(uuidString), "deviceType" : getDeviceTypeUUID(uuidString), "firmwareVersion" : getVersionFirmware(uuidString)]])
+                }
             }
         }
     }
@@ -760,6 +784,41 @@ extension SwiftNrfBleMeshPlugin : MeshNetworkDelegate {
         }
         
         return ""
+    }
+    
+    func getMacFromDataManufacturer(_ manufacturer : String) -> String {
+        if manufacturer.count > 16 {
+            let start = manufacturer.index(manufacturer.startIndex, offsetBy: 4)
+            let end = manufacturer.index(manufacturer.startIndex, offsetBy: 15)
+            let range = start...end
+            return String(manufacturer[range])
+        }
+        
+        return ""
+    }
+    
+    func getDeviceTypeFromManufacturer(_ manufacturer : String) -> UInt32 {
+        
+        if manufacturer.count > 42 {
+            let start = manufacturer.index(manufacturer.startIndex, offsetBy: 38)
+            let end = manufacturer.index(manufacturer.startIndex, offsetBy: 41)
+            let range = start...end
+            return UInt32(manufacturer[range], radix: 16) ?? 0
+        }
+        
+        return 0
+    }
+    
+    func getVendorIdFromManufacturer(_ manufacturer : String) -> UInt32 {
+        
+        if manufacturer.count > 4 {
+            let start = manufacturer.index(manufacturer.startIndex, offsetBy: 0)
+            let end = manufacturer.index(manufacturer.startIndex, offsetBy: 3)
+            let range = start...end
+            return UInt32(manufacturer[range], radix: 16) ?? 0
+        }
+        
+        return 0
     }
     
     func resetAllProcess() {
