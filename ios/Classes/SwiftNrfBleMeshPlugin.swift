@@ -507,6 +507,11 @@ extension LogCategory {
 extension SwiftNrfBleMeshPlugin: CBCentralManagerDelegate {
     
     private func startScanning() {
+        stopScanning()
+        if bearer != nil {
+            bearer?.close()
+        }
+        
         centralManager.scanForPeripherals(withServices: [MeshProvisioningService.uuid],
                                           options: [CBCentralManagerScanOptionAllowDuplicatesKey : true])
     }
