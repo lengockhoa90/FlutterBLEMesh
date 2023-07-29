@@ -1,6 +1,6 @@
 name: nrf_ble_mesh_plugin
-description: Fix create mesh network duplicate in android
-version: 0.6.3
+description: Upgrade ble mesh nordic version
+version: 0.6.5
 homepage:
 
 environment:

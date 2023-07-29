@@ -230,7 +230,7 @@ public class SwiftNrfBleMeshPlugin: NSObject, FlutterPlugin {
         connection!.open()
         
         
-       try! addSubscription(to: Group(name: "AAA", address: 0xF000))
+//       try! addSubscription(to: Group(name: "AAA", address: 0xF000))
         
     }
     

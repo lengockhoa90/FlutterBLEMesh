@@ -15,7 +15,7 @@ A new Flutter plugin.
   s.source           = { :path => '.' }
   s.source_files = 'Classes/**/*'
   s.dependency 'Flutter'
-  s.dependency 'nRFMeshProvision', '3.1.5'
+  s.dependency 'nRFMeshProvision', '3.2.0'
   s.platform = :ios, '10.0'
   
 
