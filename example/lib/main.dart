@@ -103,7 +103,13 @@ class _MyAppState extends State<MyApp> {
                   NrfBleMeshPlugin.instance.sendMessageToAddress(address: 0x02, vendorModelId: 0x0211, companyId: 0x01, opCodeString: '0F', param: "030101" );
                 }, child: Text('Send Message')),
                 TextButton(onPressed: () {
-                  NrfBleMeshPlugin.instance.bindAppKeyToModel(nodeAddress: 0x02, modelId: 0x1000);
+                  NrfBleMeshPlugin.instance.sendVendorMessageToAddress(address: 0x02, modelId: 0x02110000, opCodeString: 'E0', param: '0200010000000000');
+                }, child: Text('Send Save Gate Way Message')),
+                TextButton(onPressed: () {
+                  NrfBleMeshPlugin.instance.sendVendorMessageToAddress(address: 0x02, modelId: 0x02110000, opCodeString: 'E0', param: '0300372AE337DDB8');
+                }, child: Text('Send AES Message')),
+                TextButton(onPressed: () {
+                  NrfBleMeshPlugin.instance.bindAppKeyToModel(nodeAddress: 0x02, modelId: 0x1100);
                 }, child: Text('bind App key')),
                 TextButton(onPressed: () {
                   NrfBleMeshPlugin.instance.setPublicationToAddress(nodeAddress: 0x02, modelId: 0x1000, publicAddress: 0xF000);

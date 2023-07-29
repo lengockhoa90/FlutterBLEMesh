@@ -75,7 +75,6 @@ public class SwiftNrfBleMeshPlugin: NSObject, FlutterPlugin {
         }
         else if call.method == "selectedProvisionDevice" {
             let args : Dictionary = call.arguments as? Dictionary<String, Any> ?? [:]
-            
             result(selectedProvisionDevice(uuidStr: args["uuidStr"] as? String ?? "", unicastAddress: args["unicastAddress"] as? UInt16))
         }
         else if call.method == "startProvisioning" {
@@ -103,12 +102,37 @@ public class SwiftNrfBleMeshPlugin: NSObject, FlutterPlugin {
             
             sendMessageToAddress(address: UInt16(address), vendorModelId: UInt16(vendorId), companyId: UInt16(companyId), opCodeString: opCodeString, params: paramString, isSegmented: args["isSegmented"] as? Int, security: args["security"] as? Int)
         }
+        else if (call.method == "sendVendorMessageToAddress") {
+            guard let args : Dictionary = call.arguments as? Dictionary<String, Any>, let address = args["address"] as? Int32, let modelId = args["modelId"] as? Int32, let opCodeString = args["opCodeString"] as? String, let paramString = args["params"] as? String  else {
+                return
+            }
+            
+           _ = sendVendorMessageToAddress(nodeAddress: UInt16(address), modelId: UInt32(modelId), opCodeString: opCodeString, params: paramString)
+            
+        }
+        else if (call.method == "setPublicationToAddress") {
+            guard let args : Dictionary = call.arguments as? Dictionary<String, Any>, let publishAddress = args["publicAddress"] as? Int32, let modelId = args["modelId"] as? Int32, let noteAddress = args["nodeAddress"] as? Int16 else {
+                return
+            }
+            result(setPublicationToAddress(UInt16(publishAddress), modelId: UInt32(modelId), noteAddress: UInt16(noteAddress)))
+            
+        }
+        else if (call.method == "bindAppKeyToModel") {
+            guard let args : Dictionary = call.arguments as? Dictionary<String, Any>, let modelId = args["modelId"] as? Int32, let noteAddress = args["nodeAddress"] as? Int16 else {
+                return
+            }
+        
+            result(bindAppKeyToModel(UInt32(modelId), noteAddress: UInt16(noteAddress)))
+            
+        }
+        else if (call.method == "disConnectProvisionNode") {
+            disConnectProvisionNode()
+        }
     }
     
     
     func initMeshNetworkManager() {
         if (meshNetworkManager == nil) {
-            
             
             meshNetworkManager = MeshNetworkManager()
             meshNetworkManager.acknowledgmentTimerInterval = 0.600
@@ -118,7 +142,6 @@ public class SwiftNrfBleMeshPlugin: NSObject, FlutterPlugin {
             meshNetworkManager.acknowledgmentMessageTimeout = 40.0
             meshNetworkManager.delegate = self
             meshNetworkManager.logger = self
-            
         }
     }
     
@@ -162,7 +185,7 @@ public class SwiftNrfBleMeshPlugin: NSObject, FlutterPlugin {
     /// This method creates a new mesh network with a default name and a
     /// single Provisioner. When done, if calls `meshNetworkDidChange()`.
     func createNewMeshNetwork() {
-        // TODO: Implement creator
+        
         let provisioner = Provisioner(name: UIDevice.current.name,
                                       allocatedUnicastRange: [AddressRange(0x0001...0x199A)],
                                       allocatedGroupRange:   [AddressRange(0xC000...0xCC9A)],
@@ -230,7 +253,7 @@ public class SwiftNrfBleMeshPlugin: NSObject, FlutterPlugin {
         connection!.open()
         
         
-       try! addSubscription(to: Group(name: "AAA", address: 0xF000))
+//       try! addSubscription(to: Group(name: "AAA", address: 0xF000))
         
     }
     
@@ -282,9 +305,38 @@ public class SwiftNrfBleMeshPlugin: NSObject, FlutterPlugin {
                 let message = ConfigAppKeyAdd(applicationKey: appKey)
                 _ = try? self.meshNetworkManager.send(message, to: node)
              }
+            
+//            DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+//                for element in node.elements {
+//
+//                    for model in element.models {
+//                        if let message = ConfigModelAppBind(applicationKey: appKey, to: model) {
+//                            _ = try? self.meshNetworkManager.send(message, to: node)
+//                        }
+//                    }
+//                }
+//             }
+        }
+    }
+    
+    func bindAppKeyToModel(_ modelId : UInt32?, noteAddress : UInt16?) -> Bool {
+        if let address = noteAddress, let appKey = meshNetworkManager.meshNetwork?.applicationKeys.first, let node = meshNetworkManager.meshNetwork?.node(withAddress: address), let modelId = modelId {
+
+                for element in node.elements {
+                    if let model = element.model(withModelId: UInt32(modelId)) {
+                        if let message = ConfigModelAppBind(applicationKey: appKey, to: model) {
+                            _ = try? self.meshNetworkManager.send(message, to: node)
+                            
+                            return true
+                        }
+                    }
+                }
         }
         
+        return false
     }
+    
+    
     
     func removeNodeInMesh(address : UInt16!) -> Bool {
 
@@ -301,12 +353,8 @@ public class SwiftNrfBleMeshPlugin: NSObject, FlutterPlugin {
     }
     
     func sendMessageToAddress(address : UInt16!, vendorModelId : UInt16!, companyId : UInt16!, opCodeString : String!, params: String!, isSegmented : Int! = 0, security: Int! = 0) {
-        
-        
         let model : Model = Model(vendorModelId: vendorModelId, companyId: companyId, delegate: SimpleOnOffClientDelegate(meshNetworkManager: meshNetworkManager))
-//        let model : Model = Model(vendorModelId: 0x10, companyId: 0x2e5, delegate: SimpleOnOffClientDelegate(meshNetworkManager: meshNetworkManager))
-        
-        
+
         if let opCode = UInt8(opCodeString, radix: 16), let meshNetwork = meshNetworkManager.meshNetwork, let appKey = meshNetwork.applicationKeys.first {
             let parameters = Data(hex: params)
             var message = RuntimeVendorMessage(opCode: opCode, for: model, parameters: parameters)
@@ -316,9 +364,24 @@ public class SwiftNrfBleMeshPlugin: NSObject, FlutterPlugin {
             do {
                 try meshNetworkManager.send(message, to: MeshAddress(address), using: appKey)
             } catch {
-                
             }
         }
+    }
+    
+    func sendVendorMessageToAddress(nodeAddress : UInt16!, modelId : UInt32!, opCodeString : String!, params: String!, isSegmented : Int! = 0, security: Int! = 0) -> Bool {
+        if let address = nodeAddress, let appKey = meshNetworkManager.meshNetwork?.applicationKeys.first, let node = meshNetworkManager.meshNetwork?.node(withAddress: address), let modelId = modelId, let opCode = UInt8(opCodeString, radix: 16) {
+
+                for element in node.elements {
+                    if let model = element.model(withModelId: UInt32(modelId)) {
+                    let parameters = Data(hex: params)
+                    let message = RuntimeVendorMessage(opCode: opCode, for: model, parameters: parameters)
+                    _ = try? meshNetworkManager.send(message, to: MeshAddress(address), using: appKey)
+                        return true
+                }
+            }
+        }
+        
+        return false
     }
     
     func addSubscription(to group: Group) {
@@ -340,25 +403,62 @@ public class SwiftNrfBleMeshPlugin: NSObject, FlutterPlugin {
         }
     }
     
-    func checkHasMeshNetwork() -> Bool {
-        return meshNetworkManager.meshNetwork != nil
-    }
-    
-    func bindAppKeyToModel(_ modelId : UInt32?, noteAddress : UInt16?) -> Bool {
-        if let address = noteAddress, let appKey = meshNetworkManager.meshNetwork?.applicationKeys.first, let node = meshNetworkManager.meshNetwork?.node(withAddress: address), let modelId = modelId {
-
-                for element in node.elements {
-                    if let model = element.model(withModelId: UInt32(modelId)) {
-                        if let message = ConfigModelAppBind(applicationKey: appKey, to: model) {
-                            _ = try? self.meshNetworkManager.send(message, to: node)
-                            
-                            return true
-                        }
-                    }
+    func setPublicationToAddress(_ publishAddress : UInt16?, modelId : UInt32?, noteAddress : UInt16?) -> Bool {
+        guard let noteAddress = noteAddress, let node = self.meshNetworkManager.meshNetwork?.node(withAddress: noteAddress), let destination = publishAddress, let applicationKey = meshNetworkManager.meshNetwork?.applicationKeys.first, let modelId = modelId else {
+            return false
+        }
+        
+        let publish = Publish(to: MeshAddress(destination), using: applicationKey,
+                              usingFriendshipMaterial: false, ttl: 0xFF,
+                              period: Publish.Period(steps: 0, resolution: .hundredsOfMilliseconds),
+                              retransmit: Publish.Retransmit(publishRetransmitCount: 0,
+                                                             intervalSteps: 0))
+        
+        
+        for element in node.elements {
+            if let model = element.model(withModelId: modelId) {
+                if let message: ConfigMessage =
+                    ConfigModelPublicationSet(publish, to: model) ??
+                    ConfigModelPublicationVirtualAddressSet(publish, to: model) {
+                    _ = try? self.meshNetworkManager.send(message, to: node)
+                    
+                    return true
                 }
+            }
         }
         
         return false
+    }
+    
+    func setPublication(_ publishAddress : MeshAddress?, toAddress : Address?, modelId : UInt32?, elementAddress : Address) {
+        guard let address = toAddress, let destination = publishAddress, let applicationKey = meshNetworkManager.meshNetwork?.applicationKeys.first,
+              
+              let node = meshNetworkManager.meshNetwork?.node(withAddress: address), let modelId = modelId else {
+            return
+        }
+        
+        let publish = Publish(to: destination, using: applicationKey,
+                              usingFriendshipMaterial: false, ttl: 0xFF,
+                              period: Publish.Period(steps: 0, resolution: .hundredsOfMilliseconds),
+                              retransmit: Publish.Retransmit(publishRetransmitCount: 0,
+                                                             intervalSteps: 0))
+        
+    
+        if let element = node.element(withAddress: elementAddress) {
+            if let model = element.model(withModelId: modelId) {
+                if let message: ConfigMessage =
+                    ConfigModelPublicationSet(publish, to: model) ??
+                    ConfigModelPublicationVirtualAddressSet(publish, to: model) {
+                    _ = try? self.meshNetworkManager.send(message, to: node)
+                }
+            }
+        }
+    }
+    
+
+    
+    func checkHasMeshNetwork() -> Bool {
+        return meshNetworkManager.meshNetwork != nil
     }
 }
 
@@ -417,7 +517,7 @@ extension SwiftNrfBleMeshPlugin: CBCentralManagerDelegate {
     public func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
                         advertisementData: [String : Any], rssi RSSI: NSNumber) {
         
-        if discoveredPeripherals.firstIndex(where: { $0.peripheral.identifier.uuidString == peripheral.identifier.uuidString }) != nil {
+        if discoveredPeripherals.firstIndex(where: { $0.peripheral == peripheral }) != nil {
 
         } else {
             if let unprovisionedDevice = UnprovisionedDevice(advertisementData: advertisementData) {
@@ -425,7 +525,6 @@ extension SwiftNrfBleMeshPlugin: CBCentralManagerDelegate {
                 
                 let uuidString = unprovisionedDevice.uuid.uuidString.replacingOccurrences(of: "-", with: "")
                 
-               
                 if let manufactory = advertisementData[CBAdvertisementDataManufacturerDataKey], let data = manufactory as? Data {
                     let dataString = data.toHexString()
                     
@@ -460,7 +559,7 @@ extension SwiftNrfBleMeshPlugin: GattBearerDelegate {
         
     public func bearerDidOpen(_ bearer: Bearer) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: {
-            if (self.meshNetworkManager.meshNetwork != nil && self.selectedDevice != nil && self.bearer != nil) {
+            if (self.meshNetworkManager.meshNetwork != nil) {
                 self.provisioningManager = try! self.meshNetworkManager.provision(unprovisionedDevice: self.selectedDevice!, over: self.bearer!)
                 self.provisioningManager.delegate = self
                 self.provisioningManager.logger = self.meshNetworkManager.logger
@@ -523,9 +622,11 @@ extension SwiftNrfBleMeshPlugin: ProvisioningDelegate {
             }
                 
             case .complete:
-                
+                self.bearer?.close()
                 self.provisioningSuccess = true
-                self.addAppkeyForNode()
+//                self.addAppkeyForNode()
+                
+                self.getCompositionData()
             
                 self.sendEvent(["provisioningDelegate" :  ["state": "provisionSuccessful", "uuid": self.selectedDevice?.uuid.uuidString ?? ""]])
                 
@@ -671,9 +772,6 @@ private extension SwiftNrfBleMeshPlugin {
                                                    authenticationMethod: self.authenticationMethod!)
             return "provisioningStarted"
         } catch {
-//            self.abort()
-//            self.presentAlert(title: "Error", message: error.localizedDescription)
-            
             return "provisioningFail"
         }
     }
@@ -683,6 +781,14 @@ private extension SwiftNrfBleMeshPlugin {
         _ = try? self.meshNetworkManager.meshNetwork?.add(applicationKey: appKey, name: "App Key")
     
         return appKey.base64EncodedString()
+    }
+    
+    func getCompositionData() {
+        
+        if let address = provisioningManager.unicastAddress, let node = meshNetworkManager.meshNetwork?.node(withAddress: address) {
+            let message = ConfigCompositionDataGet()
+            return _ = try? self.meshNetworkManager.send(message, to: node)
+        }
     }
 }
 
@@ -694,27 +800,36 @@ extension SwiftNrfBleMeshPlugin : MeshNetworkDelegate {
                             sentFrom source: Address, to destination: Address) {
         // Has the Node been reset remotely.
         guard !(message is ConfigNodeReset) else {
-
             return
         }
         
-        
-       
-//        if message.opCode == 0xD20100 {
-//            NSLog("%@", message.opCode.description)
-//        }
-
         
         // Handle the message based on its type.
         switch message {
             
         case _ as ConfigAppKeyStatus:
             
-            self.bearer?.close()
+//            self.bearer?.close()
             self.sendEvent(["meshNetworkDelegate" : ["state": "addAppKeySuccessful", "unicashAddress" : self.provisioningManager.unicastAddress?.asString() ?? "", "uuid": self.selectedDevice?.uuid.uuidString ?? ""]])
+            _ = bindAppKeyToModel(0x02110000, noteAddress: 0x0002)
             self.selectedDevice = nil
             
+        case _ as ConfigCompositionDataStatus:
+            os_log("ConfigCompositionDataStatus---------")
+            addAppkeyForNode()
+            
+            
+        case  _ as ConfigModelAppStatus:
+            
+//            sendMessageToAddress(address: 0x0002, vendorModelId: 0x000, companyId: 0x0211, opCodeString: "E0", params: "0200000000000000")
+            sendEvent(["bindAppKeyToModel" : ["nodeAddress": source,"modelId" : (message as! ConfigModelAppStatus).modelId, "elementAddress": (message as! ConfigModelAppStatus).elementAddress]])
+            
+
+        case _ as ConfigModelPublicationStatus:
+            sendEvent(["publicationToAddress" : ["nodeAddress": source,"modelId" : (message as! ConfigModelPublicationStatus).modelId, "elementAddress": (message as! ConfigModelPublicationStatus).elementAddress]])
+            
         default:
+            
             sendEvent(["receivedMessage" : ["address" : source.hex, "opcode": String(format: "%04X", message.opCode), "param" : message.parameters?.hex ?? ""]])
     
             break
@@ -727,7 +842,7 @@ extension SwiftNrfBleMeshPlugin : MeshNetworkDelegate {
                             error: Error) {
             
         if (message.opCode == 0x00 && provisioningSuccess && self.bearer != nil && self.bearer!.isOpen) {
-            self.bearer?.close()
+//            self.bearer?.close()
             self.sendEvent(["meshNetworkDelegate" : ["state": "addAppKeySuccessful", "unicashAddress" : self.provisioningManager.unicastAddress?.asString() ?? "", "uuid": self.selectedDevice?.uuid.uuidString ?? ""]])
             self.selectedDevice = nil
             self.provisioningSuccess = false
@@ -747,6 +862,17 @@ extension SwiftNrfBleMeshPlugin : MeshNetworkDelegate {
         return ""
     }
     
+    func getMacFromDataManufacturer(_ manufacturer : String) -> String {
+        if manufacturer.count > 16 {
+            let start = manufacturer.index(manufacturer.startIndex, offsetBy: 4)
+            let end = manufacturer.index(manufacturer.startIndex, offsetBy: 15)
+            let range = start...end
+            return String(manufacturer[range])
+        }
+        
+        return ""
+    }
+    
     func getDeviceTypeUUID(_ uuid : String) -> UInt32 {
         
         if uuid.count > 20 {
@@ -754,6 +880,30 @@ extension SwiftNrfBleMeshPlugin : MeshNetworkDelegate {
             let end = uuid.index(uuid.startIndex, offsetBy: 19)
             let range = start...end
             return UInt32(uuid[range], radix: 16) ?? 0
+        }
+        
+        return 0
+    }
+    
+    func getDeviceTypeFromManufacturer(_ manufacturer : String) -> UInt32 {
+        
+        if manufacturer.count > 42 {
+            let start = manufacturer.index(manufacturer.startIndex, offsetBy: 38)
+            let end = manufacturer.index(manufacturer.startIndex, offsetBy: 41)
+            let range = start...end
+            return UInt32(manufacturer[range], radix: 16) ?? 0
+        }
+        
+        return 0
+    }
+    
+    func getVendorIdFromManufacturer(_ manufacturer : String) -> UInt32 {
+        
+        if manufacturer.count > 4 {
+            let start = manufacturer.index(manufacturer.startIndex, offsetBy: 0)
+            let end = manufacturer.index(manufacturer.startIndex, offsetBy: 3)
+            let range = start...end
+            return UInt32(manufacturer[range], radix: 16) ?? 0
         }
         
         return 0
@@ -786,41 +936,6 @@ extension SwiftNrfBleMeshPlugin : MeshNetworkDelegate {
         return ""
     }
     
-    func getMacFromDataManufacturer(_ manufacturer : String) -> String {
-        if manufacturer.count > 16 {
-            let start = manufacturer.index(manufacturer.startIndex, offsetBy: 4)
-            let end = manufacturer.index(manufacturer.startIndex, offsetBy: 15)
-            let range = start...end
-            return String(manufacturer[range])
-        }
-        
-        return ""
-    }
-    
-    func getDeviceTypeFromManufacturer(_ manufacturer : String) -> UInt32 {
-        
-        if manufacturer.count > 42 {
-            let start = manufacturer.index(manufacturer.startIndex, offsetBy: 38)
-            let end = manufacturer.index(manufacturer.startIndex, offsetBy: 41)
-            let range = start...end
-            return UInt32(manufacturer[range], radix: 16) ?? 0
-        }
-        
-        return 0
-    }
-    
-    func getVendorIdFromManufacturer(_ manufacturer : String) -> UInt32 {
-        
-        if manufacturer.count > 4 {
-            let start = manufacturer.index(manufacturer.startIndex, offsetBy: 0)
-            let end = manufacturer.index(manufacturer.startIndex, offsetBy: 3)
-            let range = start...end
-            return UInt32(manufacturer[range], radix: 16) ?? 0
-        }
-        
-        return 0
-    }
-    
     func resetAllProcess() {
         stopScanning()
         if bearer != nil {
@@ -830,6 +945,12 @@ extension SwiftNrfBleMeshPlugin : MeshNetworkDelegate {
     
         capabilitiesReceived = false;
         
+    }
+    
+    func disConnectProvisionNode() {
+        if bearer != nil {
+            bearer?.close()
+        }
     }
     
 }
@@ -842,8 +963,8 @@ struct RuntimeVendorMessage: VendorMessage {
     var security: MeshMessageSecurity = .low
     
     init(opCode: UInt8, for model: Model, parameters: Data?) {
-//        self.opCode = (UInt32(0xC0 | opCode) << 16) | UInt32(model.companyIdentifier!.bigEndian)
-        self.opCode = (UInt32(0xC0 | opCode) << 16) | 0x0100
+        self.opCode = (UInt32(0xC0 | opCode) << 16) | UInt32(model.companyIdentifier!.bigEndian)
+//        self.opCode = (UInt32(0xC0 | opCode) << 16) | 0x0100
         self.parameters = parameters
     }
     

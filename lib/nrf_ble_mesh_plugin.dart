@@ -117,6 +117,17 @@ class NrfBleMeshPlugin {
     return await _channel.invokeMethod("sendMessageToAddress", data);
   }
 
+  Future<bool> sendVendorMessageToAddress({required int address, required int modelId, required String opCodeString, String? param}) async {
+
+    Map<String, dynamic> data = Map<String, dynamic>();
+    data["address"] = address;
+    data["modelId"] = modelId;
+    data["opCodeString"] = opCodeString;
+    data["params"] = param ?? '';
+
+    return await _channel.invokeMethod("sendVendorMessageToAddress", data);
+  }
+
   Future<bool> bindAppKeyToModel({required int nodeAddress, required int modelId}) async {
 
     Map<String, dynamic> data = Map<String, dynamic>();
