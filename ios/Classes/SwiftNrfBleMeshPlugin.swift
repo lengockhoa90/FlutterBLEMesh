@@ -726,7 +726,7 @@ extension SwiftNrfBleMeshPlugin : MeshNetworkDelegate {
                             from localElement: Element, to destination: Address,
                             error: Error) {
             
-        if (message.opCode == 0x00 && provisioningSuccess && self.bearer != nil && self.bearer!.isOpen) {
+        if (message.opCode == 0x00 && provisioningSuccess && self.bearer != nil) {
             self.bearer?.close()
             self.sendEvent(["meshNetworkDelegate" : ["state": "addAppKeySuccessful", "unicashAddress" : self.provisioningManager.unicastAddress?.asString() ?? "", "uuid": self.selectedDevice?.uuid.uuidString ?? ""]])
             self.selectedDevice = nil
