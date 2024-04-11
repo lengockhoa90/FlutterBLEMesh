@@ -524,8 +524,12 @@ extension SwiftNrfBleMeshPlugin: ProvisioningDelegate {
                 
             case .complete:
                 
-                self.provisioningSuccess = true
-                self.addAppkeyForNode()
+                try self.bearer?.close()
+               
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                    self.provisioningSuccess = true
+                    self.addAppkeyForNode()
+                }
             
                 self.sendEvent(["provisioningDelegate" :  ["state": "provisionSuccessful", "uuid": self.selectedDevice?.uuid.uuidString ?? ""]])
                 
