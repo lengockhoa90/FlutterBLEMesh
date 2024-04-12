@@ -1,7 +1,7 @@
 name: nrf_ble_mesh_plugin
 
-description: Merge from 0.4.2 version
-version: 0.6.8
+description: Fix issue not build on iOS
+version: 0.6.9
 homepage:
 
 environment:

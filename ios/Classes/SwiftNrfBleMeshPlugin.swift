@@ -524,7 +524,13 @@ extension SwiftNrfBleMeshPlugin: ProvisioningDelegate {
                 
             case .complete:
                 
-                try self.bearer?.close()
+                do {
+                    try self.bearer?.close()
+                }
+                catch {
+                    
+                }
+                
                
                 DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
                     self.provisioningSuccess = true
