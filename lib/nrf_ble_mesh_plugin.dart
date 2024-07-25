@@ -49,7 +49,7 @@ class NrfBleMeshPlugin {
   }
 
   Future<bool> importMeshNetworkFromJson({String? jsonStr}) async {
-    final bool isSuccess = await _channel.invokeMethod('importMeshNetworkFromJson', jsonStr);
+    final bool isSuccess = await _channel.invokeMethod('vcnImportMeshNetworkFromJson', jsonStr);
     return isSuccess;
   }
 

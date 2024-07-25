@@ -1,7 +1,7 @@
 name: nrf_ble_mesh_plugin
 
-description: Fix issue not build on iOS
-version: 0.6.9
+description: Change key vcnImportMeshNetworkFromJson
+version: 0.7.0
 homepage:
 
 environment:

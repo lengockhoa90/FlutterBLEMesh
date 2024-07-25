@@ -162,7 +162,7 @@ public class NrfBleMeshPlugin implements FlutterPlugin, ActivityAware , MethodCh
     else if (call.method.equals("createOrLoadSavedMeshNetwork")) {
       result.success(createOrLoadSavedMeshNetwork());
     }
-    else if (call.method.equals("importMeshNetworkFromJson")) {
+    else if (call.method.equals("vcnImportMeshNetworkFromJson")) {
       result.success(importMeshNetworkFromJson((String) call.arguments));
     }
     else if (call.method.equals("exportMeshNetwork")) {

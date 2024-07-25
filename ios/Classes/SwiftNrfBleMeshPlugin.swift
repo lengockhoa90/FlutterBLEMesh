@@ -64,7 +64,7 @@ public class SwiftNrfBleMeshPlugin: NSObject, FlutterPlugin {
         else if call.method == "createOrLoadSavedMeshNetwork" {
             result(self.createOrLoadSavedMeshNetwork())
         }
-        else if call.method == "importMeshNetworkFromJson" {
+        else if call.method == "vcnImportMeshNetworkFromJson" {
             result(self.importMeshNetworkFromJson(json: call.arguments as? String))
         }
         else if call.method == "exportMeshNetwork" {
